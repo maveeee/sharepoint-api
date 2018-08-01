@@ -101,7 +101,6 @@
     <Compile Include="Model\UserField\IUserFieldUpdate.cs" />
     <Compile Include="Model\UserField\UserFieldUpdate.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Test.cs" />
     <Compile Include="Utils\StreamUtils.cs" />
   </ItemGroup>
   <ItemGroup>
