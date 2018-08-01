@@ -1,0 +1,285 @@
+﻿using Microsoft.SharePoint.Client;
+using MIP.SharePoint.API.Model;
+using MIP.SharePoint.API.Utils;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using MIP.SharePoint.API.Extensions;
+using Microsoft.SharePoint.Client.Taxonomy;
+
+namespace MIP.SharePoint.API.CSOM
+{
+    public class SPObjectModel
+    {
+        private const int SP_QUERY_ROW_LIMIT = 4999;
+        public byte[] DownloadFile(ClientContext ctx, string relativeUrl, string listName, string fileName)
+        {
+            if (ctx.HasPendingRequest)
+                ctx.ExecuteQuery();
+
+            return StreamUtils.GetStreamAsByteArray(File.OpenBinaryDirect(ctx, $"{relativeUrl}/{listName}/{fileName}").Stream);
+        }
+        public string UploadFile(ClientContext ctx, string listUrl, string fileName, byte[] file)
+        {
+            var list = GetListByUrl(ctx, listUrl);
+            ctx.Load(list.RootFolder);
+            ctx.ExecuteQuery();
+            var fileUrl = String.Format("{0}/{1}", list.RootFolder.ServerRelativeUrl, fileName);
+
+            using (var fileStream = new System.IO.MemoryStream(file))
+            {
+                Microsoft.SharePoint.Client.File.SaveBinaryDirect(ctx, fileUrl, fileStream, true);
+            }
+
+            return fileUrl;
+        }
+        public void SaveAttachment(ClientContext ctx, ListItem item, string fileName, byte[] attachment)
+        {
+            var attachmentInfo = new AttachmentCreationInformation
+            {
+                FileName = fileName
+            };
+            using (var fileStream = new System.IO.MemoryStream(attachment))
+            {
+                attachmentInfo.ContentStream = fileStream;
+                item.AttachmentFiles.Add(attachmentInfo);
+                ctx.ExecuteQuery();
+            }
+        }
+        public string GetRootFolderName(ClientContext ctx, List list)
+        {
+            var rootFolder = list.RootFolder;
+            ctx.Load(rootFolder);
+            ctx.ExecuteQuery();
+
+            return list.RootFolder.Name;
+        }
+        private void LoadDefaultListProperties(ClientContext ctx, List list)
+        {
+            ctx.Load(list, x => x.Id);
+            ctx.Load(list, x => x.Title);
+            ctx.Load(list, x => x.Fields);
+            ctx.Load(list, x => x.RootFolder);
+            ctx.Load(list, x => x.RootFolder.Name);
+
+            ctx.ExecuteQuery();
+        }
+        public List GetListById(ClientContext ctx, Guid listId)
+        {
+            var list = ctx.Web.Lists.GetById(listId);
+            LoadDefaultListProperties(ctx, list);
+            return list;
+        }
+        public List GetListByUrl(ClientContext ctx, string listUrl)
+        {
+            var list = ctx.Web.GetList(listUrl);
+            LoadDefaultListProperties(ctx, list);
+            return list;
+        }
+        private ListItemCollection ListItemQuery(ClientContext ctx, List list, CamlQuery query)
+        {
+            var items = ctx.Web.Lists.GetById(list.Id).GetItems(query);
+            ctx.Load(items);
+
+            ctx.ExecuteQuery();
+
+            return items;
+
+        }
+        public List<ListItem> GetListItems(ClientContext ctx, List list, int modifyOffsetInDays = 0)
+        {
+            var items = new List<ListItem>();
+
+            var camlQuery = new CamlQuery();
+            if (modifyOffsetInDays != 0)
+            {
+                camlQuery = Caml.Queries.GetItems(SP_QUERY_ROW_LIMIT, modifyOffsetInDays);
+            }
+            else
+            {
+                camlQuery = Caml.Queries.GetItems(SP_QUERY_ROW_LIMIT);
+            }
+
+
+            ListItemCollection listItemCollection = null;
+            do
+            {
+                listItemCollection = ListItemQuery(ctx, list, camlQuery);
+
+                if (listItemCollection.ListItemCollectionPosition != null)
+                    camlQuery.ListItemCollectionPosition = listItemCollection.ListItemCollectionPosition;
+
+                if (listItemCollection != null)
+                    items.AddRange(listItemCollection);
+
+            }
+            while (listItemCollection.ListItemCollectionPosition != null);
+
+            return items;
+        }
+        public int GetLookupId(ClientContext ctx, string listUrl, string searchColumn, string searchText)
+        {
+            var list = GetListByUrl(ctx, listUrl);
+
+            var camlQuery = Caml.Queries.GetItems(searchColumn, searchText);
+            var collection = ListItemQuery(ctx, list, camlQuery);
+            
+            return collection.First().Id;
+        }
+        public string GetTermId(ClientContext ctx, string term, Guid termSetId)
+        {
+            var taxonomySession = TaxonomySession.GetTaxonomySession(ctx);
+            ctx.Load(taxonomySession);
+
+            var termStore = taxonomySession.GetDefaultSiteCollectionTermStore();
+            ctx.Load(termStore);
+
+            var termSet = termStore.GetTermSet(termSetId);
+            ctx.Load(termSet);
+
+            var termMatches = termSet.GetTerms(new LabelMatchInformation(ctx)
+            {
+                TrimUnavailable = true,
+                TermLabel = term,
+            });
+            ctx.Load(termMatches);
+
+            ctx.ExecuteQuery();
+
+            //TODO: Handle multiple matches!
+            if(termMatches.Count() > 0)
+            {
+                return termMatches.First().Id.ToString();
+            }
+            return string.Empty;
+
+        }
+        private void SetMetaData(ClientContext ctx, List list, ListItem listItem, MetaData metaData)
+        {
+            foreach (var updateValue in metaData.UpdateValues)
+            {
+                dynamic value = Convert.ChangeType(updateValue.FieldValue, updateValue.Type);
+                listItem[updateValue.InternalFieldName] = value;
+            }
+            listItem.Update(); //make sure the item gets updated at the next ExecuteQuery call or else the state of the item crashes
+
+            foreach (var userField in metaData.UserFields)
+            {
+                var user = ctx.Site.RootWeb.EnsureUser(userField.UserName);
+                ctx.Load(user, x => x.Id);
+                ctx.ExecuteQueryWithIncrementalRetry();
+                var userValue = new FieldUserValue()
+                {
+                    LookupId = user.Id
+                };
+                listItem[userField.InternalFieldName] = userValue;
+            }
+
+            foreach (var lookupField in metaData.LookupFields)
+            {
+                listItem[lookupField.InternalFieldName] = new FieldLookupValue()
+                {
+                    LookupId = GetLookupId(ctx, lookupField.ListUrl, lookupField.ColumnToSearch, lookupField.SearchText),
+                };
+            }
+
+            foreach(var taxonomyInformation in metaData.TaxonomyFields)
+            {
+                var field = list.Fields.GetByInternalNameOrTitle(taxonomyInformation.InternalFieldName);
+
+                var txField = ctx.CastTo<TaxonomyField>(field);
+                ctx.Load(txField);
+                ctx.ExecuteQuery();
+                string termId = GetTermId(ctx, taxonomyInformation.FieldValue, txField.TermSetId);
+
+                if(!string.IsNullOrEmpty(termId))
+                {
+                    if(txField.AllowMultipleValues)
+                    {
+                        string termValueString = string.Empty;
+
+                        var termValues = listItem[taxonomyInformation.InternalFieldName] as TaxonomyFieldValueCollection;
+                        foreach(var taxonomyFieldValue in termValues)
+                        {
+                            termValueString += $"{taxonomyFieldValue.WssId};#{taxonomyFieldValue.Label}|{taxonomyFieldValue.TermGuid};#"; 
+                        }
+                        termValueString += $"-1;#{taxonomyInformation.FieldValue}|{termId}";
+
+                        termValues = new TaxonomyFieldValueCollection(ctx, termValueString, txField);
+                        txField.SetFieldValueByValueCollection(listItem, termValues);
+                    }
+                    else
+                    {
+                        var termValue = new TaxonomyFieldValue
+                        {
+                            Label = taxonomyInformation.FieldValue,
+                            TermGuid = termId,
+                            WssId = -1
+                        };
+                        txField.SetFieldValueByValue(listItem, termValue);
+                    }
+                }
+            }
+
+            listItem.Update();
+            ctx.ExecuteQueryWithIncrementalRetry();
+        }
+        public void CreateItem(ClientContext ctx, string listUrl, MetaData metaData)
+        {
+            var list = GetListByUrl(ctx, listUrl);
+            ctx.ExecuteQueryWithIncrementalRetry();
+
+            var listItemInfo = new ListItemCreationInformation();
+
+            var listItem = list.AddItem(listItemInfo);
+
+            this.SetMetaData(ctx, list, listItem, metaData);
+
+        }
+        public void SetMetaData(ClientContext ctx, string listUrl, ListItem listItem, MetaData metaData)
+        {
+            var list = GetListByUrl(ctx, listUrl);
+            ctx.Load(list, x => x.EnableVersioning);
+
+            this.SetMetaData(ctx, list, listItem, metaData);
+
+        }
+
+        public void SetMetaData(ClientContext ctx, string listUrl, string fileUrl, MetaData metaData)
+        {
+            if(Helper.UrlHelper.IsAbsoluteUrl(fileUrl))
+            {
+                fileUrl = new Uri(fileUrl).AbsolutePath;
+            }
+            var uploadedFile = ctx.Web.GetFileByServerRelativeUrl(fileUrl);
+
+            ctx.Load(uploadedFile);
+            var list = GetListByUrl(ctx, listUrl);
+            ctx.Load(list, x => x.EnableVersioning);
+
+            ctx.ExecuteQuery();
+
+            if (list.EnableVersioning)
+            {
+                ctx.Load(uploadedFile, x => x.CheckOutType);
+                ctx.ExecuteQuery();
+
+                if (uploadedFile.CheckOutType == CheckOutType.None)
+                    uploadedFile.CheckOut();
+
+                ctx.ExecuteQuery();
+            }
+
+            var listItem = uploadedFile.ListItemAllFields;
+
+            this.SetMetaData(ctx, list, listItem, metaData);
+
+            if (list.EnableVersioning)
+                uploadedFile.CheckIn(string.Empty, CheckinType.MajorCheckIn);
+
+            ctx.ExecuteQuery();
+        }
+    }
+}
