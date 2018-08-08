@@ -12,5 +12,9 @@ namespace MIP.SharePoint.API.Helper
         {
             return Uri.TryCreate(url, UriKind.Absolute, out Uri result);
         }
+        public static string GetAbsoluteUrl(string contextUrl, string relativeUrl)
+        {
+            return $"{new Uri(contextUrl).GetLeftPart(UriPartial.Authority)}{relativeUrl}";
+        }
     }
 }
