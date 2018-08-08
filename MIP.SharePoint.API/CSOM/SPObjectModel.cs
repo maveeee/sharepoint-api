@@ -8,6 +8,8 @@ using System.Text;
 using System.Threading.Tasks;
 using MIP.SharePoint.API.Extensions;
 using Microsoft.SharePoint.Client.Taxonomy;
+using Microsoft.SharePoint.Client.DocumentSet;
+using MIP.SharePoint.API.Helper;
 
 namespace MIP.SharePoint.API.CSOM
 {
@@ -21,18 +23,22 @@ namespace MIP.SharePoint.API.CSOM
 
             return StreamUtils.GetStreamAsByteArray(File.OpenBinaryDirect(ctx, $"{relativeUrl}/{listName}/{fileName}").Stream);
         }
-        public string UploadFile(ClientContext ctx, string listUrl, string fileName, byte[] file)
+        public string UploadFile(ClientContext ctx, string listUrl, string fileName, byte[] file, string relativeFolderUrl = null)
         {
             var list = GetListByUrl(ctx, listUrl);
             ctx.Load(list.RootFolder);
             ctx.ExecuteQuery();
-            var fileUrl = String.Format("{0}/{1}", list.RootFolder.ServerRelativeUrl, fileName);
+
+            var uploadFolderUrl = list.RootFolder.ServerRelativeUrl;
+            if (!String.IsNullOrEmpty(relativeFolderUrl))
+                uploadFolderUrl = relativeFolderUrl;
+
+            var fileUrl = String.Format("{0}/{1}", uploadFolderUrl, fileName);
 
             using (var fileStream = new System.IO.MemoryStream(file))
             {
                 Microsoft.SharePoint.Client.File.SaveBinaryDirect(ctx, fileUrl, fileStream, true);
             }
-
             return fileUrl;
         }
         public void SaveAttachment(ClientContext ctx, ListItem item, string fileName, byte[] attachment)
@@ -226,17 +232,19 @@ namespace MIP.SharePoint.API.CSOM
             listItem.Update();
             ctx.ExecuteQueryWithIncrementalRetry();
         }
-        public void CreateItem(ClientContext ctx, string listUrl, MetaData metaData)
+        public void CreateItem(ClientContext ctx, string listUrl, MetaData metaData, string folderPath = null)
         {
             var list = GetListByUrl(ctx, listUrl);
             ctx.ExecuteQueryWithIncrementalRetry();
 
             var listItemInfo = new ListItemCreationInformation();
 
+            if (!String.IsNullOrEmpty(folderPath))
+                listItemInfo.FolderUrl = folderPath;
+
             var listItem = list.AddItem(listItemInfo);
 
             this.SetMetaData(ctx, list, listItem, metaData);
-
         }
         public void SetMetaData(ClientContext ctx, string listUrl, ListItem listItem, MetaData metaData)
         {
@@ -281,5 +289,78 @@ namespace MIP.SharePoint.API.CSOM
 
             ctx.ExecuteQuery();
         }
+        public string CreateFolder(ClientContext ctx, List list, string folderTitle, bool enableFolderCreation = false, string folderUrl = "")
+        {
+            ctx.Load(list, l => l.EnableFolderCreation);
+            ctx.ExecuteQuery();
+
+            if (!list.EnableFolderCreation && enableFolderCreation)
+            {
+                list.EnableFolderCreation = enableFolderCreation;
+                list.Update();
+                ctx.ExecuteQuery();
+            }
+            else if (!list.EnableFolderCreation)
+            {
+                throw new Exception("Can not create Folders on List because EnableFolderCreation Property is set to false");
+            }
+
+            var folderItem = list.AddItem(new ListItemCreationInformation()
+            {
+                FolderUrl = folderUrl,
+                LeafName = folderTitle,
+                UnderlyingObjectType = FileSystemObjectType.Folder,
+            });
+
+            folderItem.Update();
+            ctx.Load(folderItem, folder => folder.Folder.ServerRelativeUrl);
+            ctx.ExecuteQuery();
+
+            return UrlHelper.GetAbsoluteUrl(ctx.Url, folderItem.Folder.ServerRelativeUrl);
+
+        }
+        private const string DOCUMENT_SET_CONTENT_TYPE_START_ID = "0x0120D520";
+        private bool CanAutoDetectDocumentSetContentType(ContentTypeCollection contentTypes)
+        {
+            var count = contentTypes.Count(x => x.Id.StringValue.StartsWith(DOCUMENT_SET_CONTENT_TYPE_START_ID));
+            if (contentTypes.Count(x => x.Id.StringValue.StartsWith(DOCUMENT_SET_CONTENT_TYPE_START_ID)) == 1)
+            {
+                return true;
+            }
+            return false;
+        }
+        public string CreateDocumentSet(ClientContext ctx, List list, string title, bool autoDetectDocumentSetContentType, string contentTypeId = "")
+        {
+            var rootFolder = list.RootFolder;
+            ContentType documentSetContentType = null;
+
+            if (autoDetectDocumentSetContentType)
+            {
+                var contentTypes = list.ContentTypes;
+                ctx.Load(contentTypes);
+                ctx.ExecuteQuery();
+
+                if (!CanAutoDetectDocumentSetContentType(contentTypes))
+                {
+                    throw new Exception("Could not detect a unique Document Set Content Type. Try to use the Content Type Id Param instead");
+                }
+                documentSetContentType = contentTypes.Single(x => x.Id.StringValue.StartsWith(DOCUMENT_SET_CONTENT_TYPE_START_ID));
+            }
+            else
+            {
+                documentSetContentType = list.ContentTypes.GetById(contentTypeId);
+                ctx.Load(documentSetContentType);
+                ctx.ExecuteQuery();
+            }
+
+            var result = DocumentSet.Create(ctx, rootFolder, title, documentSetContentType.Id);
+            ctx.ExecuteQuery();
+
+            if (!String.IsNullOrEmpty(result.Value))
+                return result.Value;
+
+            return null;
+        }
     }
 }
+
