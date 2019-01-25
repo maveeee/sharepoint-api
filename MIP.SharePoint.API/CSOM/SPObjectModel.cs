@@ -232,11 +232,19 @@ namespace MIP.SharePoint.API.CSOM
             listItem.Update();
             ctx.ExecuteQueryWithIncrementalRetry();
         }
+        public void CreateItem(ClientContext ctx, List list, MetaData metaData, string folderPath = null)
+        {
+            CreateItemInternal(ctx, list, metaData, folderPath);
+        }
         public void CreateItem(ClientContext ctx, string listUrl, MetaData metaData, string folderPath = null)
         {
             var list = GetListByUrl(ctx, listUrl);
             ctx.ExecuteQueryWithIncrementalRetry();
 
+            CreateItemInternal(ctx, list, metaData, folderPath);
+        }
+        private void CreateItemInternal(ClientContext ctx, List list, MetaData metaData, string folderPath = null)
+        {
             var listItemInfo = new ListItemCreationInformation();
 
             if (!String.IsNullOrEmpty(folderPath))
