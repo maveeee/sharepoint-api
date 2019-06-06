@@ -369,8 +369,10 @@ namespace MIP.SharePoint.API.CSOM
 
             return null;
         }
-        public void MoveDocument(ClientContext ctx, ClientContext targetCtx, ListItem sourceItem, string relativeTargetListUrl, string newFileName, bool overwrite = false, MetaData metaData = null, bool deleteSourceFile = false)
+        public ListItem MoveDocument(ClientContext ctx, ClientContext targetCtx, ListItem sourceItem, string relativeTargetListUrl, string newFileName, bool overwrite = false, MetaData metaData = null, bool deleteSourceFile = false)
         {
+            ListItem item = null;
+
             ctx.Load(sourceItem);
             ctx.ExecuteQueryWithIncrementalRetry();
 
@@ -397,7 +399,7 @@ namespace MIP.SharePoint.API.CSOM
                 if(metaData != null)
                 {
                     var movedFile = targetCtx.Web.GetFileByServerRelativeUrl(relativeFileUrl);
-                    var item = movedFile.ListItemAllFields;
+                    item = movedFile.ListItemAllFields;
 
 
                     this.SetMetaData(targetCtx, this.GetListByUrl(targetCtx, relativeTargetListUrl), item, metaData);
@@ -414,6 +416,62 @@ namespace MIP.SharePoint.API.CSOM
             {
                 throw new Exception("Can't move an Item, unless it's a File");
             }
+
+            return item;
+        }
+        public bool CompareListFiles(ClientContext ctx1, ClientContext ctx2, ListItem item1, ListItem item2, List<string> metaDataToCompare)
+        {
+            ctx1.Load(item1);
+            ctx2.Load(item2);
+
+            ctx1.ExecuteQueryWithIncrementalRetry();
+            ctx2.ExecuteQueryWithIncrementalRetry();
+
+            if(item1.FileSystemObjectType == FileSystemObjectType.File && item2.FileSystemObjectType == FileSystemObjectType.File)
+            {
+                ctx1.Load(item1.File);
+                ctx2.Load(item2.File);
+
+                ctx1.ExecuteQueryWithIncrementalRetry();
+                ctx2.ExecuteQueryWithIncrementalRetry();
+
+                var fileInfo1 = File.OpenBinaryDirect(ctx1, item1.File.ServerRelativeUrl);
+                var fileInfo2 = File.OpenBinaryDirect(ctx2, item2.File.ServerRelativeUrl);
+
+                var hash1 = HashHelper.GetHashFromStream(fileInfo1.Stream);
+                var hash2 = HashHelper.GetHashFromStream(fileInfo2.Stream);
+
+                if (hash1 == hash2)
+                {
+                    if(metaDataToCompare == null)
+                    {
+                        return true;
+                    }
+                    else
+                    {
+                        ctx1.Load(item1, i => i.FieldValues);
+                        ctx2.Load(item2, i => i.FieldValues);
+
+                        ctx1.ExecuteQueryWithIncrementalRetry();
+                        ctx2.ExecuteQueryWithIncrementalRetry();
+
+                        foreach(var metaData in metaDataToCompare)
+                        {
+                            if(item1.FieldValues[metaData] != item2.FieldValues[metaData])
+                            {
+                                return false;
+                            }
+                        }
+                        return true;
+
+                    }
+                }
+            }
+            else
+            {
+                throw new Exception("List Items must be files");
+            }
+            return false;
         }
     }
 }
