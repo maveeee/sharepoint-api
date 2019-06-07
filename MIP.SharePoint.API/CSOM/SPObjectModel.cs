@@ -369,7 +369,15 @@ namespace MIP.SharePoint.API.CSOM
 
             return null;
         }
-        public ListItem MoveDocument(ClientContext ctx, ClientContext targetCtx, ListItem sourceItem, string relativeTargetListUrl, string newFileName, bool overwrite = false, MetaData metaData = null, bool deleteSourceFile = false)
+        public ListItem CopyDocument(ClientContext ctx, ClientContext targetCtx, ListItem sourceItem, string listName, string newFileName, bool overwrite = false, MetaData metaData = null)
+        {
+            return MoveDocument(ctx, targetCtx, sourceItem, listName, newFileName, overwrite, metaData, false);
+        }
+        public ListItem MoveDocument(ClientContext ctx, ClientContext targetCtx, ListItem sourceItem, string listName, string newFileName, bool overwrite = false, MetaData metaData = null)
+        {
+            return MoveDocument(ctx, targetCtx, sourceItem, listName, newFileName, overwrite, metaData, true);
+        }
+        private ListItem MoveDocument(ClientContext ctx, ClientContext targetCtx, ListItem sourceItem, string listName, string newFileName, bool overwrite = false, MetaData metaData = null, bool deleteSourceFile = false)
         {
             ListItem item = null;
 
@@ -381,9 +389,9 @@ namespace MIP.SharePoint.API.CSOM
                 ctx.Load(sourceItem.File);
                 ctx.ExecuteQuery();
 
-                relativeTargetListUrl = relativeTargetListUrl.TrimStart('/');
+                listName = listName.TrimStart('/');
 
-                var fileUrl = System.IO.Path.Combine(relativeTargetListUrl, newFileName);
+                var fileUrl = System.IO.Path.Combine(listName, newFileName);
 
                 var fileInformation = File.OpenBinaryDirect(ctx, sourceItem.File.ServerRelativeUrl);
 
@@ -391,18 +399,35 @@ namespace MIP.SharePoint.API.CSOM
                 targetCtx.Load(targetWeb);
                 targetCtx.ExecuteQuery();
 
-                var relativeFileUrl = targetWeb.ServerRelativeUrl + fileUrl;
+                var webServerRelativeUrl = targetWeb.ServerRelativeUrl;
+                if (!webServerRelativeUrl.EndsWith(@"/"))
+                    webServerRelativeUrl += @"/";
+
+                var relativeFileUrl = webServerRelativeUrl + fileUrl;
+
+                Console.WriteLine($"webServerRelativeUrl: {webServerRelativeUrl}");
+                Console.WriteLine($"fileUrl: {fileUrl}");
+
+                Console.WriteLine($"URL: {relativeFileUrl}");
+                    
 
                 File.SaveBinaryDirect(targetCtx, relativeFileUrl, fileInformation.Stream, overwrite);
 
 
-                if(metaData != null)
+                if (metaData != null)
                 {
                     var movedFile = targetCtx.Web.GetFileByServerRelativeUrl(relativeFileUrl);
+                    targetCtx.Load(movedFile);
+                    targetCtx.ExecuteQuery();
+
                     item = movedFile.ListItemAllFields;
 
+                    targetCtx.Load(item);
+                    targetCtx.ExecuteQuery();
 
-                    this.SetMetaData(targetCtx, this.GetListByUrl(targetCtx, relativeTargetListUrl), item, metaData);
+                    
+
+                    this.SetMetaData(targetCtx, this.GetListByUrl(targetCtx, webServerRelativeUrl + listName), item, metaData);
                 }
 
                 if(deleteSourceFile)
@@ -419,7 +444,7 @@ namespace MIP.SharePoint.API.CSOM
 
             return item;
         }
-        public bool CompareListFiles(ClientContext ctx1, ClientContext ctx2, ListItem item1, ListItem item2, List<string> metaDataToCompare)
+        public bool CompareListItemsAndFiles(ClientContext ctx1, ClientContext ctx2, ListItem item1, ListItem item2, List<string> metaDataToCompare)
         {
             ctx1.Load(item1);
             ctx2.Load(item2);
@@ -449,15 +474,10 @@ namespace MIP.SharePoint.API.CSOM
                     }
                     else
                     {
-                        ctx1.Load(item1, i => i.FieldValues);
-                        ctx2.Load(item2, i => i.FieldValues);
-
-                        ctx1.ExecuteQueryWithIncrementalRetry();
-                        ctx2.ExecuteQueryWithIncrementalRetry();
-
+                       
                         foreach(var metaData in metaDataToCompare)
                         {
-                            if(item1.FieldValues[metaData] != item2.FieldValues[metaData])
+                            if(item1.FieldValues[metaData].ToString() != item2.FieldValues[metaData].ToString())
                             {
                                 return false;
                             }
