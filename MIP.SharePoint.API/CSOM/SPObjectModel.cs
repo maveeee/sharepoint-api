@@ -386,6 +386,52 @@ namespace MIP.SharePoint.API.CSOM
 
             return null;
         }
+        public void MoveDocument(ClientContext ctx, ClientContext targetCtx, ListItem sourceItem, string relativeTargetListUrl, string newFileName, bool overwrite = false, MetaData metaData = null, bool deleteSourceFile = false)
+        {
+            ctx.Load(sourceItem);
+            ctx.ExecuteQueryWithIncrementalRetry();
+
+            if(sourceItem.FileSystemObjectType == FileSystemObjectType.File)
+            {
+                ctx.Load(sourceItem.File);
+                ctx.ExecuteQuery();
+
+                relativeTargetListUrl = relativeTargetListUrl.TrimStart('/');
+
+                var fileUrl = System.IO.Path.Combine(relativeTargetListUrl, newFileName);
+
+                var fileInformation = File.OpenBinaryDirect(ctx, sourceItem.File.ServerRelativeUrl);
+
+                var targetWeb = targetCtx.Web;
+                targetCtx.Load(targetWeb);
+                targetCtx.ExecuteQuery();
+
+                var relativeFileUrl = targetWeb.ServerRelativeUrl + fileUrl;
+
+                File.SaveBinaryDirect(targetCtx, relativeFileUrl, fileInformation.Stream, overwrite);
+
+
+                if(metaData != null)
+                {
+                    var movedFile = targetCtx.Web.GetFileByServerRelativeUrl(relativeFileUrl);
+                    var item = movedFile.ListItemAllFields;
+
+
+                    this.SetMetaData(targetCtx, this.GetListByUrl(targetCtx, relativeTargetListUrl), item, metaData);
+                }
+
+                if(deleteSourceFile)
+                {
+                    sourceItem.DeleteObject();
+                    ctx.ExecuteQuery();
+                }
+
+            }
+            else
+            {
+                throw new Exception("Can't move an Item, unless it's a File");
+            }
+        }
     }
 }
 
