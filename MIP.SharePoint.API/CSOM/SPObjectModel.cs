@@ -94,28 +94,24 @@ namespace MIP.SharePoint.API.CSOM
             return items;
 
         }
-        public List<ListItem> GetListItems(ClientContext ctx, List list, int modifyOffsetInDays = 0)
+        private List<ListItem> GetListItemsInternal(ClientContext ctx, List list, CamlQuery camlQuery)
         {
             var items = new List<ListItem>();
 
-            var camlQuery = new CamlQuery();
-            if (modifyOffsetInDays != 0)
+            var query = new CamlQuery();
+            if(query != null)
             {
-                camlQuery = Caml.Queries.GetItems(SP_QUERY_ROW_LIMIT, modifyOffsetInDays);
-            }
-            else
-            {
-                camlQuery = Caml.Queries.GetItems(SP_QUERY_ROW_LIMIT);
+                query = camlQuery;
             }
 
 
             ListItemCollection listItemCollection = null;
             do
             {
-                listItemCollection = ListItemQuery(ctx, list, camlQuery);
+                listItemCollection = ListItemQuery(ctx, list, query);
 
                 if (listItemCollection.ListItemCollectionPosition != null)
-                    camlQuery.ListItemCollectionPosition = listItemCollection.ListItemCollectionPosition;
+                    query.ListItemCollectionPosition = listItemCollection.ListItemCollectionPosition;
 
                 if (listItemCollection != null)
                     items.AddRange(listItemCollection);
@@ -124,6 +120,27 @@ namespace MIP.SharePoint.API.CSOM
             while (listItemCollection.ListItemCollectionPosition != null);
 
             return items;
+        }
+        public List<ListItem> GetListItems(ClientContext ctx, List list, CamlQuery camlQuery)
+        {
+            return GetListItemsInternal(ctx, list, camlQuery);
+        }
+        public List<ListItem> GetListItems(ClientContext ctx, List list, int modifyOffsetInDays = 0)
+        {
+            var items = new List<ListItem>();
+
+            var camlQuery = new CamlQuery();
+            if (modifyOffsetInDays != 0)
+            {
+                camlQuery = Caml.Queries.GetItems(SP_QUERY_ROW_LIMIT, modifyOffsetInDays);
+                return GetListItemsInternal(ctx, list, camlQuery);
+            }
+            else
+            {
+                camlQuery = Caml.Queries.GetItems(SP_QUERY_ROW_LIMIT);
+                return GetListItemsInternal(ctx, list, camlQuery);
+            }
+
         }
         public int GetLookupId(ClientContext ctx, string listUrl, string searchColumn, string searchText)
         {
