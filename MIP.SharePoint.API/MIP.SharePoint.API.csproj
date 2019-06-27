@@ -91,6 +91,7 @@
     <Compile Include="CSOM\SPObjectModel.cs" />
     <Compile Include="CSOM\SPSecurity.cs" />
     <Compile Include="Extensions\SharePointExtensions.cs" />
+    <Compile Include="Helper\HashHelper.cs" />
     <Compile Include="Helper\UrlHelper.cs" />
     <Compile Include="Model\Field\FieldUpdate.cs" />
     <Compile Include="Model\Field\IFieldUpdate.cs" />
