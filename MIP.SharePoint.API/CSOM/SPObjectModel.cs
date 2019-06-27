@@ -420,13 +420,7 @@ namespace MIP.SharePoint.API.CSOM
                 if (!webServerRelativeUrl.EndsWith(@"/"))
                     webServerRelativeUrl += @"/";
 
-                var relativeFileUrl = webServerRelativeUrl + fileUrl;
-
-                Console.WriteLine($"webServerRelativeUrl: {webServerRelativeUrl}");
-                Console.WriteLine($"fileUrl: {fileUrl}");
-
-                Console.WriteLine($"URL: {relativeFileUrl}");
-                    
+                var relativeFileUrl = webServerRelativeUrl + fileUrl;                    
 
                 File.SaveBinaryDirect(targetCtx, relativeFileUrl, fileInformation.Stream, overwrite);
 
@@ -461,53 +455,32 @@ namespace MIP.SharePoint.API.CSOM
 
             return item;
         }
-        public bool CompareListItemsAndFiles(ClientContext ctx1, ClientContext ctx2, ListItem item1, ListItem item2, List<string> metaDataToCompare)
+
+        private string GetFileHash(ClientContext ctx, ListItem item)
         {
-            ctx1.Load(item1);
-            ctx2.Load(item2);
+            ctx.Load(item);
+            ctx.ExecuteQueryWithIncrementalRetry();
 
-            ctx1.ExecuteQueryWithIncrementalRetry();
-            ctx2.ExecuteQueryWithIncrementalRetry();
-
-            if(item1.FileSystemObjectType == FileSystemObjectType.File && item2.FileSystemObjectType == FileSystemObjectType.File)
+            if(item.FileSystemObjectType == FileSystemObjectType.File)
             {
-                ctx1.Load(item1.File);
-                ctx2.Load(item2.File);
+                ctx.Load(item.File);
+                ctx.ExecuteQueryWithIncrementalRetry();
 
-                ctx1.ExecuteQueryWithIncrementalRetry();
-                ctx2.ExecuteQueryWithIncrementalRetry();
+                var fileInfo = File.OpenBinaryDirect(ctx, item.File.ServerRelativeUrl);
 
-                var fileInfo1 = File.OpenBinaryDirect(ctx1, item1.File.ServerRelativeUrl);
-                var fileInfo2 = File.OpenBinaryDirect(ctx2, item2.File.ServerRelativeUrl);
-
-                var hash1 = HashHelper.GetHashFromStream(fileInfo1.Stream);
-                var hash2 = HashHelper.GetHashFromStream(fileInfo2.Stream);
-
-                if (hash1 == hash2)
-                {
-                    if(metaDataToCompare == null)
-                    {
-                        return true;
-                    }
-                    else
-                    {
-                       
-                        foreach(var metaData in metaDataToCompare)
-                        {
-                            if(item1.FieldValues[metaData].ToString() != item2.FieldValues[metaData].ToString())
-                            {
-                                return false;
-                            }
-                        }
-                        return true;
-
-                    }
-                }
+                return HashHelper.GetHashFromStream(fileInfo.Stream);
             }
             else
             {
-                throw new Exception("List Items must be files");
+                throw new Exception("The List Item must be from FileSystemObjectType File");
             }
+        }
+
+        public bool CompareFiles(ClientContext ctx1, ClientContext ctx2, ListItem item1, ListItem item2)
+        {
+            if (GetFileHash(ctx1, item1) == GetFileHash(ctx2, item2))
+                return true;
+            
             return false;
         }
     }
