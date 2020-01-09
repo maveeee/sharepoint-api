@@ -249,18 +249,18 @@ namespace MIP.SharePoint.API.CSOM
             listItem.Update();
             ctx.ExecuteQueryWithIncrementalRetry();
         }
-        public void CreateItem(ClientContext ctx, List list, MetaData metaData, string folderPath = null)
+        public ListItem CreateItem(ClientContext ctx, List list, MetaData metaData, string folderPath = null)
         {
-            CreateItemInternal(ctx, list, metaData, folderPath);
+            return CreateItemInternal(ctx, list, metaData, folderPath);
         }
-        public void CreateItem(ClientContext ctx, string listUrl, MetaData metaData, string folderPath = null)
+        public ListItem CreateItem(ClientContext ctx, string listUrl, MetaData metaData, string folderPath = null)
         {
             var list = GetListByUrl(ctx, listUrl);
             ctx.ExecuteQueryWithIncrementalRetry();
 
-            CreateItemInternal(ctx, list, metaData, folderPath);
+            return CreateItemInternal(ctx, list, metaData, folderPath);
         }
-        private void CreateItemInternal(ClientContext ctx, List list, MetaData metaData, string folderPath = null)
+        private ListItem CreateItemInternal(ClientContext ctx, List list, MetaData metaData, string folderPath = null)
         {
             var listItemInfo = new ListItemCreationInformation();
 
@@ -270,6 +270,8 @@ namespace MIP.SharePoint.API.CSOM
             var listItem = list.AddItem(listItemInfo);
 
             this.SetMetaData(ctx, list, listItem, metaData);
+
+            return listItem;
         }
         public void SetMetaData(ClientContext ctx, string listUrl, ListItem listItem, MetaData metaData)
         {
