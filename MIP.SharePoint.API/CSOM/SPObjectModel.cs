@@ -142,6 +142,14 @@ namespace MIP.SharePoint.API.CSOM
             }
 
         }
+        public void DeleteListItems(ClientContext ctx, List<ListItem> listItemsToDelete)
+        {
+            foreach(var listItem in listItemsToDelete)
+            {
+                listItem.DeleteObject();
+            }
+            ctx.ExecuteQuery();
+        }
         public int GetLookupId(ClientContext ctx, string listUrl, string searchColumn, string searchText)
         {
             var list = GetListByUrl(ctx, listUrl);
