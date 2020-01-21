@@ -142,6 +142,15 @@ namespace MIP.SharePoint.API.CSOM
             }
 
         }
+        public void DeleteListItems(ClientContext ctx, List<ListItem> listItemsToDelete)
+        {
+            foreach(var listItem in listItemsToDelete)
+            {
+                listItem.DeleteObject();
+                ctx.ExecuteQueryWithIncrementalRetry();
+            }
+            
+        }
         public int GetLookupId(ClientContext ctx, string listUrl, string searchColumn, string searchText)
         {
             var list = GetListByUrl(ctx, listUrl);
@@ -183,8 +192,15 @@ namespace MIP.SharePoint.API.CSOM
         {
             foreach (var updateValue in metaData.UpdateValues)
             {
-                dynamic value = Convert.ChangeType(updateValue.FieldValue, updateValue.Type);
-                listItem[updateValue.InternalFieldName] = value;
+                if (updateValue.FieldValue != null)
+                {
+                    dynamic value = Convert.ChangeType(updateValue.FieldValue, updateValue.Type);
+                    listItem[updateValue.InternalFieldName] = value;
+                }
+                else
+                {
+                    listItem[updateValue.InternalFieldName] = null;
+                }
             }
             listItem.Update(); //make sure the item gets updated at the next ExecuteQuery call or else the state of the item crashes
 
