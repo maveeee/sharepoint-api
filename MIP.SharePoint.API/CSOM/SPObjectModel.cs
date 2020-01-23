@@ -222,6 +222,8 @@ namespace MIP.SharePoint.API.CSOM
                 {
                     LookupId = GetLookupId(ctx, lookupField.ListUrl, lookupField.ColumnToSearch, lookupField.SearchText),
                 };
+                listItem.Update();
+                ctx.ExecuteQueryWithIncrementalRetry();
             }
 
             foreach(var taxonomyInformation in metaData.TaxonomyFields)
