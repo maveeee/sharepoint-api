@@ -19,7 +19,7 @@ namespace MIP.SharePoint.API.CSOM
         public byte[] DownloadFile(ClientContext ctx, string relativeUrl, string listName, string fileName)
         {
             if (ctx.HasPendingRequest)
-                ctx.ExecuteQuery();
+                ctx.ExecuteQueryWithIncrementalRetry();
 
             return StreamUtils.GetStreamAsByteArray(File.OpenBinaryDirect(ctx, $"{relativeUrl}/{listName}/{fileName}").Stream);
         }
@@ -27,7 +27,7 @@ namespace MIP.SharePoint.API.CSOM
         {
             var list = GetListByUrl(ctx, listUrl);
             ctx.Load(list.RootFolder);
-            ctx.ExecuteQuery();
+            ctx.ExecuteQueryWithIncrementalRetry();
 
             var uploadFolderUrl = list.RootFolder.ServerRelativeUrl;
             if (!String.IsNullOrEmpty(relativeFolderUrl))
@@ -51,14 +51,14 @@ namespace MIP.SharePoint.API.CSOM
             {
                 attachmentInfo.ContentStream = fileStream;
                 item.AttachmentFiles.Add(attachmentInfo);
-                ctx.ExecuteQuery();
+                ctx.ExecuteQueryWithIncrementalRetry();
             }
         }
         public string GetRootFolderName(ClientContext ctx, List list)
         {
             var rootFolder = list.RootFolder;
             ctx.Load(rootFolder);
-            ctx.ExecuteQuery();
+            ctx.ExecuteQueryWithIncrementalRetry();
 
             return list.RootFolder.Name;
         }
@@ -70,7 +70,7 @@ namespace MIP.SharePoint.API.CSOM
             ctx.Load(list, x => x.RootFolder);
             ctx.Load(list, x => x.RootFolder.Name);
 
-            ctx.ExecuteQuery();
+            ctx.ExecuteQueryWithIncrementalRetry();
         }
         public List GetListById(ClientContext ctx, Guid listId)
         {
@@ -89,7 +89,7 @@ namespace MIP.SharePoint.API.CSOM
             var items = ctx.Web.Lists.GetById(list.Id).GetItems(query);
             ctx.Load(items);
 
-            ctx.ExecuteQuery();
+            ctx.ExecuteQueryWithIncrementalRetry();
 
             return items;
 
@@ -178,7 +178,7 @@ namespace MIP.SharePoint.API.CSOM
             });
             ctx.Load(termMatches);
 
-            ctx.ExecuteQuery();
+            ctx.ExecuteQueryWithIncrementalRetry();
 
             //TODO: Handle multiple matches!
             if(termMatches.Count() > 0)
@@ -232,7 +232,7 @@ namespace MIP.SharePoint.API.CSOM
 
                 var txField = ctx.CastTo<TaxonomyField>(field);
                 ctx.Load(txField);
-                ctx.ExecuteQuery();
+                ctx.ExecuteQueryWithIncrementalRetry();
                 string termId = GetTermId(ctx, taxonomyInformation.FieldValue, txField.TermSetId);
 
                 if(!string.IsNullOrEmpty(termId))
@@ -312,17 +312,17 @@ namespace MIP.SharePoint.API.CSOM
             var list = GetListByUrl(ctx, listUrl);
             ctx.Load(list, x => x.EnableVersioning);
 
-            ctx.ExecuteQuery();
+            ctx.ExecuteQueryWithIncrementalRetry();
 
             if (list.EnableVersioning)
             {
                 ctx.Load(uploadedFile, x => x.CheckOutType);
-                ctx.ExecuteQuery();
+                ctx.ExecuteQueryWithIncrementalRetry();
 
                 if (uploadedFile.CheckOutType == CheckOutType.None)
                     uploadedFile.CheckOut();
 
-                ctx.ExecuteQuery();
+                ctx.ExecuteQueryWithIncrementalRetry();
             }
 
             var listItem = uploadedFile.ListItemAllFields;
@@ -332,18 +332,18 @@ namespace MIP.SharePoint.API.CSOM
             if (list.EnableVersioning)
                 uploadedFile.CheckIn(string.Empty, CheckinType.MajorCheckIn);
 
-            ctx.ExecuteQuery();
+            ctx.ExecuteQueryWithIncrementalRetry();
         }
         public string CreateFolder(ClientContext ctx, List list, string folderTitle, bool enableFolderCreation = false, string folderUrl = "")
         {
             ctx.Load(list, l => l.EnableFolderCreation);
-            ctx.ExecuteQuery();
+            ctx.ExecuteQueryWithIncrementalRetry();
 
             if (!list.EnableFolderCreation && enableFolderCreation)
             {
                 list.EnableFolderCreation = enableFolderCreation;
                 list.Update();
-                ctx.ExecuteQuery();
+                ctx.ExecuteQueryWithIncrementalRetry();
             }
             else if (!list.EnableFolderCreation)
             {
@@ -359,7 +359,7 @@ namespace MIP.SharePoint.API.CSOM
 
             folderItem.Update();
             ctx.Load(folderItem, folder => folder.Folder.ServerRelativeUrl);
-            ctx.ExecuteQuery();
+            ctx.ExecuteQueryWithIncrementalRetry();
 
             return UrlHelper.GetAbsoluteUrl(ctx.Url, folderItem.Folder.ServerRelativeUrl);
 
@@ -383,7 +383,7 @@ namespace MIP.SharePoint.API.CSOM
             {
                 var contentTypes = list.ContentTypes;
                 ctx.Load(contentTypes);
-                ctx.ExecuteQuery();
+                ctx.ExecuteQueryWithIncrementalRetry();
 
                 if (!CanAutoDetectDocumentSetContentType(contentTypes))
                 {
@@ -395,11 +395,11 @@ namespace MIP.SharePoint.API.CSOM
             {
                 documentSetContentType = list.ContentTypes.GetById(contentTypeId);
                 ctx.Load(documentSetContentType);
-                ctx.ExecuteQuery();
+                ctx.ExecuteQueryWithIncrementalRetry();
             }
 
             var result = DocumentSet.Create(ctx, rootFolder, title, documentSetContentType.Id);
-            ctx.ExecuteQuery();
+            ctx.ExecuteQueryWithIncrementalRetry();
 
             if (!String.IsNullOrEmpty(result.Value))
                 return result.Value;
@@ -424,7 +424,7 @@ namespace MIP.SharePoint.API.CSOM
             if(sourceItem.FileSystemObjectType == FileSystemObjectType.File)
             {
                 ctx.Load(sourceItem.File);
-                ctx.ExecuteQuery();
+                ctx.ExecuteQueryWithIncrementalRetry();
 
                 listName = listName.TrimStart('/');
 
@@ -434,7 +434,7 @@ namespace MIP.SharePoint.API.CSOM
 
                 var targetWeb = targetCtx.Web;
                 targetCtx.Load(targetWeb);
-                targetCtx.ExecuteQuery();
+                targetCtx.ExecuteQueryWithIncrementalRetry();
 
                 var webServerRelativeUrl = targetWeb.ServerRelativeUrl;
                 if (!webServerRelativeUrl.EndsWith(@"/"))
@@ -449,12 +449,12 @@ namespace MIP.SharePoint.API.CSOM
                 {
                     var movedFile = targetCtx.Web.GetFileByServerRelativeUrl(relativeFileUrl);
                     targetCtx.Load(movedFile);
-                    targetCtx.ExecuteQuery();
+                    targetCtx.ExecuteQueryWithIncrementalRetry();
 
                     item = movedFile.ListItemAllFields;
 
                     targetCtx.Load(item);
-                    targetCtx.ExecuteQuery();
+                    targetCtx.ExecuteQueryWithIncrementalRetry();
 
                     
 
@@ -464,7 +464,7 @@ namespace MIP.SharePoint.API.CSOM
                 if(deleteSourceFile)
                 {
                     sourceItem.DeleteObject();
-                    ctx.ExecuteQuery();
+                    ctx.ExecuteQueryWithIncrementalRetry();
                 }
 
             }
