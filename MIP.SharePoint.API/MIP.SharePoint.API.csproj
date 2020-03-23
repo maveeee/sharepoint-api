@@ -86,6 +86,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Caml\CommonQueries.cs" />
     <Compile Include="Caml\Queries.cs" />
     <Compile Include="CSOM\SPContext.cs" />
     <Compile Include="CSOM\SPObjectModel.cs" />

@@ -30,6 +30,13 @@ namespace MIP.SharePoint.API.CSOM
 
             return StreamUtils.GetStreamAsByteArray(File.OpenBinaryDirect(ctx, $"{relativeFileUrl}").Stream);
         }
+        public string UploadFile(ClientContext ctx, string fileUrl, System.IO.Stream fileStream)
+        {
+            fileStream.Position = 0;
+            Microsoft.SharePoint.Client.File.SaveBinaryDirect(ctx, fileUrl, fileStream, true);
+            ctx.ExecuteQueryWithIncrementalRetry();
+            return fileUrl;
+        }
         public string UploadFile(ClientContext ctx, string listUrl, string fileName, byte[] file, string relativeFolderUrl = null)
         {
             var list = GetListByUrl(ctx, listUrl);
