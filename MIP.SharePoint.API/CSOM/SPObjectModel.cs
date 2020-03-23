@@ -510,6 +510,17 @@ namespace MIP.SharePoint.API.CSOM
             
             return false;
         }
+        public void RenameFile(ClientContext ctx, string fileRelativeUrl, string fileName)
+        {
+            var file = ctx.Web.GetFileByServerRelativeUrl(fileRelativeUrl);
+            ctx.Load(file.ListItemAllFields);
+
+            ctx.ExecuteQueryWithIncrementalRetry();
+
+            file.MoveTo($"{file.ListItemAllFields["FileDirRef"]}/{fileName}", MoveOperations.Overwrite);
+            
+            ctx.ExecuteQueryWithIncrementalRetry();
+        }
     }
 }
 
