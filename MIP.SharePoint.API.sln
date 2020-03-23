@@ -1,9 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 15
-VisualStudioVersion = 15.0.26228.28
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.29806.167
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MIP.SharePoint.API", "MIP.SharePoint.API\MIP.SharePoint.API.csproj", "{D39F3057-4207-4CCA-BD60-2609D1FFA29B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MIP.SharePoint.API.Samples.MetadataProcessor", "MIP.SharePoint.API.Samples\MIP.SharePoint.API.Samples.MetadataProcessor.csproj", "{1FE4146D-E421-4102-9888-CBE4FB99F5D5}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,8 +17,15 @@ Global
 		{D39F3057-4207-4CCA-BD60-2609D1FFA29B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D39F3057-4207-4CCA-BD60-2609D1FFA29B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D39F3057-4207-4CCA-BD60-2609D1FFA29B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1FE4146D-E421-4102-9888-CBE4FB99F5D5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1FE4146D-E421-4102-9888-CBE4FB99F5D5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1FE4146D-E421-4102-9888-CBE4FB99F5D5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1FE4146D-E421-4102-9888-CBE4FB99F5D5}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {765FEB0A-7966-49E4-BD4A-867D6D4D6136}
 	EndGlobalSection
 EndGlobal
