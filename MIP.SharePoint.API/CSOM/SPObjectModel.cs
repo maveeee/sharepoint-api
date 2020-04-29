@@ -10,6 +10,7 @@ using MIP.SharePoint.API.Extensions;
 using Microsoft.SharePoint.Client.Taxonomy;
 using Microsoft.SharePoint.Client.DocumentSet;
 using MIP.SharePoint.API.Helper;
+using MIP.SharePoint.API.Model.Attachment;
 
 namespace MIP.SharePoint.API.CSOM
 {
@@ -55,46 +56,35 @@ namespace MIP.SharePoint.API.CSOM
             }
             return fileUrl;
         }
-        public List<KeyValuePair<string, byte[]>> GetAttachments(ClientContext ctx, List list, ListItem item)
+        public List<FileAttachment> GetAttachments(ClientContext ctx, List list, ListItem item)
         {
-            var itemAttachments = new List<KeyValuePair<string, byte[]>>();
+            var itemAttachments = new List<FileAttachment>();
 
-            // these properties can be loaded in advance, outside of this method
             ctx.Load(list, l => l.RootFolder.ServerRelativeUrl);
             ctx.Load(ctx.Site, s => s.Url);
+            
             ctx.ExecuteQueryWithIncrementalRetry();
 
-            // get the item's attachments folder 
-            Folder attFolder = ctx.Web.GetFolderByServerRelativeUrl(list.RootFolder.ServerRelativeUrl + "/Attachments/" + item.Id);
-            FileCollection files = attFolder.Files;
-            // I needed only urls, so I am loading just them
-            ctx.Load(files, fs => fs.Include(f => f.ServerRelativeUrl));
-            ctx.Load(files, fs => fs.Include(f => f.Name));
+            var files = ctx.Web.GetFolderByServerRelativeUrl(list.RootFolder.ServerRelativeUrl + "/Attachments/" + item.Id).Files;
+
+            ctx.Load(files, fs => fs.Include(f => f.ServerRelativeUrl, f => f.Name));
+            
             ctx.ExecuteQueryWithIncrementalRetry();
 
             foreach(var attachment in files)
             {
+                itemAttachments.Add(new FileAttachment()
+                {
+                    Name = attachment.Name,
+                    File = this.DownloadFile(ctx, attachment.ServerRelativeUrl),
+                });
 
-                itemAttachments.Add(new KeyValuePair<string, byte[]>(attachment.Name, 
-                    this.DownloadFile(ctx, attachment.ServerRelativeUrl)));
             }
             return itemAttachments;
 
 
         }
-        public List<KeyValuePair<string, byte[]>> DownloadAttachments(ClientContext ctx, ListItem item)
-        {
-            var itemAttachments = new List<KeyValuePair<string, byte[]>>();
-            ctx.Load(item.AttachmentFiles);
-            ctx.ExecuteQueryWithIncrementalRetry();
-            foreach (var attachment in item.AttachmentFiles)
-            {
-                itemAttachments.Add(new KeyValuePair<string, byte[]>
-                    (attachment.FileName, this.DownloadFile(ctx, attachment.ServerRelativeUrl)));
-            }
-            return itemAttachments;
-        }
-        public void SaveAttachment(ClientContext ctx, ListItem item, string fileName, byte[] attachment)
+        public void SaveAttachment(ClientContext ctx, ListItem item, string fileName, byte[] attachment, bool skipExecuteQuery = false)
         {
             var attachmentInfo = new AttachmentCreationInformation
             {
@@ -104,7 +94,8 @@ namespace MIP.SharePoint.API.CSOM
             {
                 attachmentInfo.ContentStream = fileStream;
                 item.AttachmentFiles.Add(attachmentInfo);
-                ctx.ExecuteQueryWithIncrementalRetry();
+                if(!skipExecuteQuery)
+                    ctx.ExecuteQueryWithIncrementalRetry();
             }
         }
         public string GetRootFolderName(ClientContext ctx, List list)
@@ -241,25 +232,22 @@ namespace MIP.SharePoint.API.CSOM
             return string.Empty;
 
         }
-        private void SetMetaData(ClientContext ctx, List list, ListItem listItem, MetaData metaData)
+        private void SetMetaData(ClientContext ctx, List list, ListItem listItem, MetaData metaData, List<FileAttachment> attachments)
         {
-            var allValuesToBeUpdated = new Dictionary<string, dynamic>();
+            var itemFieldUpdates = new Dictionary<string, dynamic>();
 
             foreach (var updateValue in metaData.UpdateValues)
             {
                 if (updateValue.FieldValue != null)
                 {
                     dynamic value = Convert.ChangeType(updateValue.FieldValue, updateValue.Type);
-                    //listItem[updateValue.InternalFieldName] = value;
-                    allValuesToBeUpdated.Add(updateValue.InternalFieldName, value);
+                    itemFieldUpdates.Add(updateValue.InternalFieldName, value);
                 }
                 else
                 {
-                    //listItem[updateValue.InternalFieldName] = null;
-                    allValuesToBeUpdated.Add(updateValue.InternalFieldName, null);
+                    itemFieldUpdates.Add(updateValue.InternalFieldName, null);
                 }
             }
-            //listItem.Update(); //make sure the item gets updated at the next ExecuteQuery call or else the state of the item crashes
 
             foreach (var userField in metaData.UserFields)
             {
@@ -270,29 +258,21 @@ namespace MIP.SharePoint.API.CSOM
                 {
                     LookupId = user.Id
                 };
-                //listItem[userField.InternalFieldName] = userValue;
-                allValuesToBeUpdated.Add(userField.InternalFieldName, userValue);
+                itemFieldUpdates.Add(userField.InternalFieldName, userValue);
             }
 
             foreach (var lookupField in metaData.LookupFields)
             {
-                /*
-                listItem[lookupField.InternalFieldName] = new FieldLookupValue()
-                {
-                    LookupId = GetLookupId(ctx, lookupField.ListUrl, lookupField.ColumnToSearch, lookupField.SearchText),
-                };
-                */
-                allValuesToBeUpdated.Add(lookupField.InternalFieldName, new FieldLookupValue()
+                itemFieldUpdates.Add(lookupField.InternalFieldName, new FieldLookupValue()
                 {
                     LookupId = GetLookupId(ctx, lookupField.ListUrl, lookupField.ColumnToSearch, lookupField.SearchText),
                 });
-
-                //listItem.Update();
-                //ctx.ExecuteQueryWithIncrementalRetry();
             }
 
             foreach(var taxonomyInformation in metaData.TaxonomyFields)
             {
+                ctx.ExecuteQueryWithIncrementalRetry();
+
                 var field = list.Fields.GetByInternalNameOrTitle(taxonomyInformation.InternalFieldName);
 
                 var txField = ctx.CastTo<TaxonomyField>(field);
@@ -329,26 +309,34 @@ namespace MIP.SharePoint.API.CSOM
                 }
             }
 
-            foreach(var keyValuePair in allValuesToBeUpdated)
+            foreach(var fieldUpdate in itemFieldUpdates)
             {
-                listItem[keyValuePair.Key] = keyValuePair.Value;
+                listItem[fieldUpdate.Key] = fieldUpdate.Value;
+            }
+            
+            if(attachments != null)
+            {
+                foreach(var attachment in attachments)
+                {
+                    this.SaveAttachment(ctx, listItem, attachment.Name, attachment.File, true);
+                }
             }
 
             listItem.Update();
             ctx.ExecuteQueryWithIncrementalRetry();
         }
-        public ListItem CreateItem(ClientContext ctx, List list, MetaData metaData, string folderPath = null)
+        public ListItem CreateItem(ClientContext ctx, List list, MetaData metaData, string folderPath = null, List<FileAttachment> attachments = null)
         {
-            return CreateItemInternal(ctx, list, metaData, folderPath);
+            return CreateItemInternal(ctx, list, metaData, folderPath, attachments);
         }
-        public ListItem CreateItem(ClientContext ctx, string listUrl, MetaData metaData, string folderPath = null)
+        public ListItem CreateItem(ClientContext ctx, string listUrl, MetaData metaData, string folderPath = null, List<FileAttachment> attachments = null)
         {
             var list = GetListByUrl(ctx, listUrl);
             ctx.ExecuteQueryWithIncrementalRetry();
 
-            return CreateItemInternal(ctx, list, metaData, folderPath);
+            return CreateItemInternal(ctx, list, metaData, folderPath, attachments);
         }
-        private ListItem CreateItemInternal(ClientContext ctx, List list, MetaData metaData, string folderPath = null)
+        private ListItem CreateItemInternal(ClientContext ctx, List list, MetaData metaData, string folderPath = null, List<FileAttachment> attachments = null)
         {
             var listItemInfo = new ListItemCreationInformation();
 
@@ -357,20 +345,20 @@ namespace MIP.SharePoint.API.CSOM
 
             var listItem = list.AddItem(listItemInfo);
 
-            this.SetMetaData(ctx, list, listItem, metaData);
+            this.SetMetaData(ctx, list, listItem, metaData, attachments);
 
             return listItem;
         }
-        public void SetMetaData(ClientContext ctx, string listUrl, ListItem listItem, MetaData metaData)
+        public void SetMetaData(ClientContext ctx, string listUrl, ListItem listItem, MetaData metaData, List<FileAttachment> attachments = null)
         {
             var list = GetListByUrl(ctx, listUrl);
             ctx.Load(list, x => x.EnableVersioning);
 
-            this.SetMetaData(ctx, list, listItem, metaData);
+            this.SetMetaData(ctx, list, listItem, metaData, attachments);
 
         }
 
-        public void SetMetaData(ClientContext ctx, string listUrl, string fileUrl, MetaData metaData)
+        public void SetMetaData(ClientContext ctx, string listUrl, string fileUrl, MetaData metaData, List<FileAttachment> attachments = null)
         {
             if(Helper.UrlHelper.IsAbsoluteUrl(fileUrl))
             {
@@ -397,7 +385,7 @@ namespace MIP.SharePoint.API.CSOM
 
             var listItem = uploadedFile.ListItemAllFields;
 
-            this.SetMetaData(ctx, list, listItem, metaData);
+            this.SetMetaData(ctx, list, listItem, metaData, attachments);
 
             if (list.EnableVersioning)
                 uploadedFile.CheckIn(string.Empty, CheckinType.MajorCheckIn);
@@ -528,7 +516,7 @@ namespace MIP.SharePoint.API.CSOM
 
                     
 
-                    this.SetMetaData(targetCtx, this.GetListByUrl(targetCtx, webServerRelativeUrl + listName), item, metaData);
+                    this.SetMetaData(targetCtx, this.GetListByUrl(targetCtx, webServerRelativeUrl + listName), item, metaData, null);
                 }
 
                 if(deleteSourceFile)

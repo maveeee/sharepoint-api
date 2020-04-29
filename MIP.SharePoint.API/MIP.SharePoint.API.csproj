@@ -99,6 +99,7 @@
     <Compile Include="Extensions\SharePointExtensions.cs" />
     <Compile Include="Helper\HashHelper.cs" />
     <Compile Include="Helper\UrlHelper.cs" />
+    <Compile Include="Model\Attachment\FileAttachment.cs" />
     <Compile Include="Model\Attributes\SPFieldAttribute.cs" />
     <Compile Include="Model\Attributes\SPListAttribute.cs" />
     <Compile Include="Model\Attributes\SpLookupFieldAttribute.cs" />
