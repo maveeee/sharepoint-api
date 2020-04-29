@@ -84,7 +84,7 @@ namespace MIP.SharePoint.API.CSOM
 
 
         }
-        public void SaveAttachment(ClientContext ctx, ListItem item, string fileName, byte[] attachment, bool skipExecuteQuery = false)
+        public void SaveAttachment(ClientContext ctx, ListItem item, string fileName, byte[] attachment)
         {
             var attachmentInfo = new AttachmentCreationInformation
             {
@@ -94,10 +94,10 @@ namespace MIP.SharePoint.API.CSOM
             {
                 attachmentInfo.ContentStream = fileStream;
                 item.AttachmentFiles.Add(attachmentInfo);
-                if(!skipExecuteQuery)
-                    ctx.ExecuteQueryWithIncrementalRetry();
+                ctx.ExecuteQueryWithIncrementalRetry();
             }
         }
+
         public string GetRootFolderName(ClientContext ctx, List list)
         {
             var rootFolder = list.RootFolder;
@@ -316,14 +316,22 @@ namespace MIP.SharePoint.API.CSOM
             
             if(attachments != null)
             {
-                foreach(var attachment in attachments)
+                listItem.Update();
+                ctx.ExecuteQueryWithIncrementalRetry();
+
+                
+                foreach (var attachment in attachments)
                 {
-                    this.SaveAttachment(ctx, listItem, attachment.Name, attachment.File, true);
+                    this.SaveAttachment(ctx, listItem, attachment.Name, attachment.File);
                 }
+                
+            }
+            else
+            {
+                listItem.Update();
+                ctx.ExecuteQueryWithIncrementalRetry();
             }
 
-            listItem.Update();
-            ctx.ExecuteQueryWithIncrementalRetry();
         }
         public ListItem CreateItem(ClientContext ctx, List list, MetaData metaData, string folderPath = null, List<FileAttachment> attachments = null)
         {
