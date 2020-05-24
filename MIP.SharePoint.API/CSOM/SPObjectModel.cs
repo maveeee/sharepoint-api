@@ -442,6 +442,9 @@ namespace MIP.SharePoint.API.CSOM
 
             var listItem = uploadedFile.ListItemAllFields;
 
+            ctx.Load(listItem);
+            ctx.ExecuteQueryWithIncrementalRetry();
+
             this.SetMetaData(ctx, list, listItem, metaData, attachments);
 
             if (list.EnableVersioning)
