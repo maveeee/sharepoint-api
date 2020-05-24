@@ -56,6 +56,20 @@ namespace MIP.SharePoint.API.CSOM
             }
             return fileUrl;
         }
+        public string UploadFile(ClientContext ctx, List list, string fileName, byte[] file, string relativeFolderUrl = null)
+        {
+            var uploadFolderUrl = list.RootFolder.ServerRelativeUrl;
+            if (!String.IsNullOrEmpty(relativeFolderUrl))
+                uploadFolderUrl = relativeFolderUrl;
+
+            var fileUrl = String.Format("{0}/{1}", uploadFolderUrl, fileName);
+
+            using (var fileStream = new System.IO.MemoryStream(file))
+            {
+                Microsoft.SharePoint.Client.File.SaveBinaryDirect(ctx, fileUrl, fileStream, true);
+            }
+            return fileUrl;
+        }
         public List<FileAttachment> GetAttachments(ClientContext ctx, List list, ListItem item)
         {
             var itemAttachments = new List<FileAttachment>();
@@ -64,6 +78,17 @@ namespace MIP.SharePoint.API.CSOM
             ctx.Load(ctx.Site, s => s.Url);
             
             ctx.ExecuteQueryWithIncrementalRetry();
+
+            try
+            {
+                var folder = ctx.Web.GetFolderByServerRelativeUrl(list.RootFolder.ServerRelativeUrl + "/Attachments/" + item.Id);
+                ctx.Load(folder);
+                ctx.ExecuteQueryWithIncrementalRetry();
+            }
+            catch(Exception ex)
+            {
+                return itemAttachments;
+            }
 
             var files = ctx.Web.GetFolderByServerRelativeUrl(list.RootFolder.ServerRelativeUrl + "/Attachments/" + item.Id).Files;
 
@@ -113,6 +138,7 @@ namespace MIP.SharePoint.API.CSOM
             ctx.Load(list, x => x.Fields);
             ctx.Load(list, x => x.RootFolder);
             ctx.Load(list, x => x.RootFolder.Name);
+            ctx.Load(list, x => x.EnableVersioning);
 
             ctx.ExecuteQueryWithIncrementalRetry();
         }
@@ -263,10 +289,36 @@ namespace MIP.SharePoint.API.CSOM
 
             foreach (var lookupField in metaData.LookupFields)
             {
-                itemFieldUpdates.Add(lookupField.InternalFieldName, new FieldLookupValue()
+                if (lookupField.UseLookupId)
                 {
-                    LookupId = GetLookupId(ctx, lookupField.ListUrl, lookupField.ColumnToSearch, lookupField.SearchText),
-                });
+                    if (lookupField.LookupId != 0)
+                    {
+                        itemFieldUpdates.Add(lookupField.InternalFieldName, new FieldLookupValue()
+                        {
+                            LookupId = lookupField.LookupId,
+                        });
+                    }
+
+                }
+                else if(lookupField.UseMultipleLookupIds)
+                {
+                    var fieldMultipleLookupValues = new List<FieldLookupValue>();
+
+                    lookupField.LookupIds.ForEach(x => fieldMultipleLookupValues.Add(new FieldLookupValue()
+                    {
+                        LookupId = x
+                    }));
+
+                    itemFieldUpdates.Add(lookupField.InternalFieldName, fieldMultipleLookupValues);
+                }
+                else
+                {
+                    itemFieldUpdates.Add(lookupField.InternalFieldName, new FieldLookupValue()
+                    {
+                        LookupId = GetLookupId(ctx, lookupField.ListUrl, lookupField.ColumnToSearch, lookupField.SearchText),
+                    });
+
+                }
             }
 
             foreach(var taxonomyInformation in metaData.TaxonomyFields)
@@ -366,18 +418,15 @@ namespace MIP.SharePoint.API.CSOM
 
         }
 
-        public void SetMetaData(ClientContext ctx, string listUrl, string fileUrl, MetaData metaData, List<FileAttachment> attachments = null)
+        public void SetMetaData(ClientContext ctx, List list, string fileUrl, MetaData metaData, List<FileAttachment> attachments = null)
         {
-            if(Helper.UrlHelper.IsAbsoluteUrl(fileUrl))
+            if (Helper.UrlHelper.IsAbsoluteUrl(fileUrl))
             {
                 fileUrl = new Uri(fileUrl).AbsolutePath;
             }
             var uploadedFile = ctx.Web.GetFileByServerRelativeUrl(fileUrl);
 
             ctx.Load(uploadedFile);
-            var list = GetListByUrl(ctx, listUrl);
-            ctx.Load(list, x => x.EnableVersioning);
-
             ctx.ExecuteQueryWithIncrementalRetry();
 
             if (list.EnableVersioning)
@@ -399,6 +448,26 @@ namespace MIP.SharePoint.API.CSOM
                 uploadedFile.CheckIn(string.Empty, CheckinType.MajorCheckIn);
 
             ctx.ExecuteQueryWithIncrementalRetry();
+        }
+
+
+        public void SetMetaData(ClientContext ctx, string listUrl, string fileUrl, MetaData metaData, List<FileAttachment> attachments = null)
+        {
+            if(Helper.UrlHelper.IsAbsoluteUrl(fileUrl))
+            {
+                fileUrl = new Uri(fileUrl).AbsolutePath;
+            }
+            var uploadedFile = ctx.Web.GetFileByServerRelativeUrl(fileUrl);
+
+            ctx.Load(uploadedFile);
+            var list = GetListByUrl(ctx, listUrl);
+            ctx.Load(list, x => x.EnableVersioning);
+
+            ctx.ExecuteQueryWithIncrementalRetry();
+
+            this.SetMetaData(ctx, list, fileUrl, metaData, attachments);
+
+
         }
         public string CreateFolder(ClientContext ctx, List list, string folderTitle, bool enableFolderCreation = false, string folderUrl = "")
         {
