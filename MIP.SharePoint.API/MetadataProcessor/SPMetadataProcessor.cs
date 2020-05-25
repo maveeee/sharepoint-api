@@ -2,11 +2,14 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Remoting.Messaging;
 using MIP.SharePoint.API.Helper;
 using MIP.SharePoint.API.Model;
 using MIP.SharePoint.API.Model.Attributes;
 using MIP.SharePoint.API.Model.Field;
 using MIP.SharePoint.API.Model.LookupField;
+using MIP.SharePoint.API.Model.TaxonomyField;
+using MIP.SharePoint.API.Model.UserField;
 
 namespace MIP.SharePoint.API.MetadataProcessor
 {
@@ -14,11 +17,16 @@ namespace MIP.SharePoint.API.MetadataProcessor
     {
         private readonly ISPListInfoLookup listInfoLookup;
 
+        public SPMetadataProcessor()
+        {
+            this.listInfoLookup = new SPListInfoLookup();
+        }
+
         public SPMetadataProcessor(ISPListInfoLookup listInfoLookup)
         {
             this.listInfoLookup = listInfoLookup;
         }
-        
+
         public IEnumerable<IDocument> GetAttachments(object listModel)
         {
             if (listModel == null)
@@ -76,6 +84,16 @@ namespace MIP.SharePoint.API.MetadataProcessor
                 metadata.LookupFields = fieldUpdates[typeof(LookupFieldUpdate)].Cast<ILookupFieldUpdate>().ToList();
             }
 
+            if (fieldUpdates.ContainsKey(typeof(UserFieldUpdate)))
+            {
+                metadata.UserFields = fieldUpdates[typeof(UserFieldUpdate)].Cast<IUserFieldUpdate>().ToList();
+            }
+
+            if (fieldUpdates.ContainsKey(typeof(TaxonomyFieldUpdate)))
+            {
+                metadata.TaxonomyFields = fieldUpdates[typeof(TaxonomyFieldUpdate)].Cast<ITaxonomyFieldUpdate>().ToList();
+            }
+
             return metadata;
         }
 
@@ -85,6 +103,8 @@ namespace MIP.SharePoint.API.MetadataProcessor
             return attribute switch
             {
                 SpLookupFieldAttribute lookupFieldAttribute => ToLookupFieldUpdate(listModel, propertyInfo, lookupFieldAttribute),
+                SPUserFieldAttribute userFieldAttribute => ToUserFieldUpdate(listModel, propertyInfo, userFieldAttribute),
+                SPTaxonomyFieldAttribute taxonomyFieldAttribute => ToTaxonomyFieldUpdate(listModel, propertyInfo, taxonomyFieldAttribute),
                 SPFieldAttribute fieldAttribute => ToFieldUpdate(listModel, propertyInfo, fieldAttribute),
                 _ => throw new ArgumentOutOfRangeException($"Unexpected type '{attribute.GetType()}'", nameof(attribute)),
             };
@@ -128,6 +148,45 @@ namespace MIP.SharePoint.API.MetadataProcessor
                 ListUrl = listUrl,
                 ColumnToSearch = lookupListFieldName,
             };
+
+            return fieldUpdate;
+        }
+
+        private UserFieldUpdate ToUserFieldUpdate(object listModel, PropertyInfo propertyInfo, SPUserFieldAttribute attribute)
+        {
+            return ToStringFieldUpdate(listModel, propertyInfo, attribute, (name, value) => new UserFieldUpdate()
+            {
+                InternalFieldName = name,
+                UserName = value
+            });
+        }
+
+        private TaxonomyFieldUpdate ToTaxonomyFieldUpdate(object listModel, PropertyInfo propertyInfo, SPTaxonomyFieldAttribute attribute)
+        {
+            return ToStringFieldUpdate(listModel, propertyInfo, attribute, (name, value) => new TaxonomyFieldUpdate()
+            {
+                InternalFieldName = name,
+                FieldValue = value
+            });
+        }
+
+
+        private T ToStringFieldUpdate<T>(object listModel, PropertyInfo propertyInfo, SPFieldAttribute attribute, Func<string, string, T> fieldUpdateFactory) where T : class
+        {
+            if (propertyInfo.PropertyType != typeof(string))
+            {
+                throw new Exception($"Field property type needs to be of type string! (actual: {propertyInfo.PropertyType})");
+            }
+
+            var value = (string)propertyInfo.GetValue(listModel);
+
+            // If no value is set, do not create a UserFieldUpdate object
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return null;
+            }
+
+            var fieldUpdate = fieldUpdateFactory(attribute.Name, value);
 
             return fieldUpdate;
         }

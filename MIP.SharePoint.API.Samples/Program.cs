@@ -24,6 +24,8 @@ namespace MIP.SharePoint.API.Samples
                 Title = "My Title",
                 SomeColumn = 6,
                 SomeLookupField = "lookup-value",
+                TaxonomyColumn = "I have no idea what this is",
+                UserColumn = "user@example.com",
                 Document = new DummyDocument
                 {
                     FileName = Guid.NewGuid().ToString("N")

@@ -13,6 +13,12 @@ namespace MIP.SharePoint.API.Samples.MetadataProcessor.Model
         [SPField("SPInternalFieldName")]
         public int SomeColumn { get; set; }
 
+        [SPUserField("SPInternalUserFieldName")]
+        public string UserColumn { get; set; }
+
+        [SPTaxonomyField("SPInternalTaxonomyFieldName")]
+        public string TaxonomyColumn { get; set; }
+
         public string NotMappedProperty { get; set; }
 
         [SpLookupField("AnotherInternalFieldName", "AliasOfTheReferencedList", "InternalFieldNameInTheReferencedList")]
